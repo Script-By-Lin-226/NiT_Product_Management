@@ -19,7 +19,7 @@ async def register_route(new_user: UserRegister, session: AsyncSession = Depends
 @limiter.limit("10/per hour")
 @router.post("/login")
 async def login_route(user: UserLogin,request:Request, session: AsyncSession = Depends(get_async_session)):
-    return await login(user , session)
+    return await login(user, session, request)
 
 @router.post("/forgot")
 async def forgot_password_route(

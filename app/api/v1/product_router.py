@@ -24,10 +24,24 @@ def _to_product_item(product: Product, inventory: Inventory) -> ProductItem:
     )
 
 
+def _to_local_day_key(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.date().isoformat()
+    return value.astimezone().date().isoformat()
+
+
 async def _commit_with_excel_sync(session: AsyncSession) -> None:
     try:
         await sync_products_to_excel(session=session)
         await session.commit()
+    except PermissionError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         await session.rollback()
         raise HTTPException(
@@ -222,44 +236,45 @@ async def create_admin_stock_entry_route(
 ):
     require_admin(request)
     actor_name, actor_class = get_actor_details(request)
-
-    try:
-        snapshot = await read_excel_snapshot()
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    excel_product_names = {
-        item["product_name"].strip().lower()
-        for item in snapshot.get("items", [])
-    }
     normalized_product_name = payload.product_name.strip()
-    if normalized_product_name.lower() not in excel_product_names:
+    if not normalized_product_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Product must exist in app/Services/data.xlsx.",
+            detail="Product name is required.",
         )
+    is_uniform_product = normalized_product_name.lower().startswith("uniform -")
 
     product_result = await session.execute(
         select(Product).where(func.lower(Product.product_name) == normalized_product_name.lower())
     )
     product = product_result.scalars().first()
     if product is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found in inventory database.",
-        )
+        if payload.movement == "in" and is_uniform_product:
+            product = Product(product_name=normalized_product_name)
+            session.add(product)
+            await session.flush()
+        elif payload.movement == "out" and is_uniform_product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    "Uniform size not found in inventory. "
+                    "Add it first using an In entry."
+                ),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Product not found in inventory database.",
+            )
 
     inventory_result = await session.execute(
         select(Inventory).where(Inventory.product_id == product.id)
     )
     inventory = inventory_result.scalars().first()
     if inventory is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Inventory record not found for the selected product.",
-        )
+        inventory = Inventory(product_id=product.id, quantity=0)
+        session.add(inventory)
+        await session.flush()
 
     change_amount = payload.quantity if payload.movement == "in" else -payload.quantity
     next_quantity = int(inventory.quantity) + int(change_amount)
@@ -270,6 +285,7 @@ async def create_admin_stock_entry_route(
         )
     given_to = (payload.given_to or "").strip() or None
     department = (payload.department or "").strip() or None
+    uniform_category = (payload.uniform_category or "").strip() or None
     if payload.movement == "out" and (given_to is None or department is None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -288,6 +304,7 @@ async def create_admin_stock_entry_route(
             change_amount=change_amount,
             actor_name=actor_name,
             actor_class=actor_class,
+            uniform_category=uniform_category,
             given_to=given_to,
             department=department,
             created_at=entry_date,
@@ -305,6 +322,7 @@ async def create_admin_stock_entry_route(
             "quantity": payload.quantity,
             "date": entry_date.isoformat(),
             "balance": next_quantity,
+            "uniform_category": uniform_category,
             "given_to": given_to,
             "department": department,
         },
@@ -353,6 +371,19 @@ async def get_dashboard_route(
         for product_name, quantity in inventory_rows
     ]
 
+    daily_logs_query = select(
+        InventoryLog.change_amount,
+        InventoryLog.created_at,
+    )
+    daily_logs_result = await session.execute(daily_logs_query)
+
+    daily_map: dict[str, int] = {}
+    for change_amount, created_at in daily_logs_result.all():
+        day_key = _to_local_day_key(created_at)
+        if day_key is None:
+            continue
+        daily_map[day_key] = daily_map.get(day_key, 0) + int(change_amount)
+
     logs_query = (
         select(
             InventoryLog.change_amount,
@@ -360,6 +391,7 @@ async def get_dashboard_route(
             Product.product_name,
             InventoryLog.actor_name,
             InventoryLog.actor_class,
+            InventoryLog.uniform_category,
             InventoryLog.given_to,
             InventoryLog.department,
         )
@@ -370,21 +402,16 @@ async def get_dashboard_route(
     logs_result = await session.execute(logs_query)
 
     recent_logs = []
-    daily_map: dict[str, int] = {}
     for (
         change_amount,
         created_at,
         product_name,
         actor_name,
         actor_class,
+        uniform_category,
         given_to,
         department,
     ) in logs_result.all():
-        iso_timestamp = created_at.isoformat() if created_at is not None else None
-        if iso_timestamp is not None:
-            day_key = iso_timestamp.split("T", 1)[0]
-            daily_map[day_key] = daily_map.get(day_key, 0) + int(change_amount)
-
         recent_logs.append(
             serialize_activity_log(
                 product_name=product_name,
@@ -392,6 +419,7 @@ async def get_dashboard_route(
                 created_at=created_at,
                 actor_name=actor_name,
                 actor_class=actor_class,
+                uniform_category=uniform_category,
                 given_to=given_to,
                 department=department,
             )

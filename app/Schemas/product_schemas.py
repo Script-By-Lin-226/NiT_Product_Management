@@ -24,5 +24,6 @@ class StockEntryCreate(BaseModel):
     entry_date: datetime | None = None
     movement: Literal["in", "out"]
     quantity: int = Field(ge=1)
+    uniform_category: str | None = Field(default=None, max_length=255)
     given_to: str | None = Field(default=None, max_length=255)
     department: str | None = Field(default=None, max_length=255)

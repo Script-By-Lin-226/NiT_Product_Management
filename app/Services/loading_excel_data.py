@@ -260,6 +260,11 @@ async def load_excel_data(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"message": str(exc)},
         )
+    except PermissionError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_423_LOCKED,
+            content={"message": str(exc)},
+        )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -381,6 +386,12 @@ async def load_excel_data(
         if sync_excel_file:
             await sync_products_to_excel(session=session)
         await session.commit()
+    except PermissionError as exc:
+        await session.rollback()
+        return JSONResponse(
+            status_code=status.HTTP_423_LOCKED,
+            content={"message": str(exc)},
+        )
     except Exception as exc:  # noqa: BLE001
         await session.rollback()
         return JSONResponse(

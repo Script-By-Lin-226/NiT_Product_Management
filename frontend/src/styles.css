@@ -467,16 +467,27 @@ th {
 
 @media (max-width: 780px) {
   .shell {
-    width: min(1320px, 94%);
-    margin: 1rem auto 1.4rem;
+    width: min(1320px, 96%);
+    margin: 0.9rem auto 1.3rem;
+    gap: 0.8rem;
   }
 
   .panel {
-    padding: 0.85rem;
+    padding: 0.8rem;
+    border-radius: 12px;
   }
 
   .hero {
     flex-direction: column;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.2rem, 5vw, 1.6rem);
+  }
+
+  .lead {
+    font-size: 0.84rem;
+    line-height: 1.4;
   }
 
   .hero-actions {
@@ -484,6 +495,13 @@ th {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
+  }
+
+  input,
+  select,
+  button {
+    min-height: 44px;
+    font-size: 0.9rem;
   }
 
   .hero-actions .status-dot {
@@ -516,7 +534,17 @@ th {
   }
 
   .chart-panel .chart-wrap {
-    height: 220px;
+    height: 205px;
+  }
+
+  .table-wrap {
+    max-height: 260px;
+  }
+
+  th,
+  td {
+    padding: 0.56rem;
+    font-size: 0.78rem;
   }
 
   .log-list li {
@@ -551,12 +579,54 @@ th {
 }
 
 @media (max-width: 560px) {
+  .shell {
+    width: min(1320px, 97%);
+    margin: 0.72rem auto 1rem;
+  }
+
+  .panel {
+    padding: 0.72rem;
+  }
+
+  .section-head h2 {
+    font-size: 0.94rem;
+  }
+
+  .meta {
+    font-size: 0.74rem;
+  }
+
   .stats-grid {
     grid-template-columns: 1fr;
   }
 
   .hero-actions {
     grid-template-columns: 1fr;
+  }
+
+  .hero-actions button,
+  .hero-actions .status-dot {
+    width: 100%;
+  }
+
+  .chart-panel .chart-wrap {
+    height: 185px;
+  }
+
+  .table-wrap {
+    border-radius: 8px;
+  }
+
+  .table-wrap table {
+    min-width: 520px;
+  }
+
+  .log-list li {
+    padding: 0.52rem 0.56rem;
+  }
+
+  .log-meta {
+    letter-spacing: 0.03em;
   }
 }
 

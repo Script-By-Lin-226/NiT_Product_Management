@@ -41,6 +41,7 @@ class InventoryLog(Base):
     change_amount = Column(Integer, nullable=False)  # Rename 'quantity' to 'change' for clarity
     actor_name = Column(String(255), nullable=True)
     actor_class = Column(String(255), nullable=True)
+    uniform_category = Column(String(255), nullable=True)
     given_to = Column(String(255), nullable=True)
     department = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

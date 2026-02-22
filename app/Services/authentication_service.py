@@ -37,7 +37,17 @@ async def register_user(new_user:UserRegister, session:AsyncSession):
         content={"message":"User created successfully"}
     )
 
-async def login(login_user:UserLogin , session:AsyncSession):
+def _resolve_cookie_policy(request: Request | None) -> tuple[bool, str]:
+    if request is None:
+        return False, "lax"
+
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    scheme = forwarded_proto or request.url.scheme.lower()
+    is_https = scheme == "https"
+    return is_https, ("none" if is_https else "lax")
+
+
+async def login(login_user:UserLogin , session:AsyncSession, request: Request | None = None):
     check  ,existed_user = await check_existence(session, login_user.email)
     if not check:
         return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,content={"message":"User does not exist"})
@@ -58,14 +68,25 @@ async def login(login_user:UserLogin , session:AsyncSession):
             "Message":"Login Successfull"
         }
     )
-    response_object.set_cookie("access_token",access_token, httponly=True, samesite="lax",secure=False)
-    response_object.set_cookie("refresh_token" ,refresh_token, httponly=True, samesite="lax",secure=False)
-    response_object.headers["Access-Control-Allow-Origin"] = "*"
-    response_object.headers["Access-Control-Allow-Headers"] = "*"
-    response_object.headers["Access-Control-Allow-Methods"] = "*"
+    cookie_secure, cookie_samesite = _resolve_cookie_policy(request)
+    response_object.set_cookie(
+        "access_token",
+        access_token,
+        httponly=True,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
+        path="/",
+    )
+    response_object.set_cookie(
+        "refresh_token",
+        refresh_token,
+        httponly=True,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
+        path="/",
+    )
     response_object.headers["Authorization"] = f"Bearer {access_token}"
     response_object.headers["X-Refresh-Token"] = f"{refresh_token}"
-    response_object.headers["Access-Control-Allow-Credentials"] = "true"
 
     return response_object
 

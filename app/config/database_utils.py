@@ -36,6 +36,8 @@ def _apply_runtime_schema_updates(sync_conn) -> None:
         missing_columns.append("ALTER TABLE inventory_logs ADD COLUMN actor_name VARCHAR(255)")
     if "actor_class" not in existing_columns:
         missing_columns.append("ALTER TABLE inventory_logs ADD COLUMN actor_class VARCHAR(255)")
+    if "uniform_category" not in existing_columns:
+        missing_columns.append("ALTER TABLE inventory_logs ADD COLUMN uniform_category VARCHAR(255)")
     if "given_to" not in existing_columns:
         missing_columns.append("ALTER TABLE inventory_logs ADD COLUMN given_to VARCHAR(255)")
     if "department" not in existing_columns:

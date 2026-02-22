@@ -33,6 +33,7 @@ def serialize_activity_log(
     created_at: datetime | None,
     actor_name: str | None,
     actor_class: str | None,
+    uniform_category: str | None = None,
     given_to: str | None = None,
     department: str | None = None,
 ) -> dict[str, Any]:
@@ -46,6 +47,7 @@ def serialize_activity_log(
         "change_amount": int(change_amount),
         "name": resolved_actor_name,
         "class": resolved_actor_class,
+        "uniform_category": (uniform_category or "").strip() or None,
         "given_to": (given_to or "").strip() or None,
         "department": (department or "").strip() or None,
         "action": action,

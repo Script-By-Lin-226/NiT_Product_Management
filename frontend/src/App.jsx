@@ -66,12 +66,18 @@ function createDefaultNewProductForm() {
 }
 
 function getUniformItemOptions(gender) {
+  if (gender === "girl") {
+    return ["shirt", "pant", "skirt"];
+  }
   return ["shirt", "pant"];
 }
 
 function getUniformSizeOptions(gender, item) {
   if (item === "shirt") {
     return gender === "girl" ? GIRL_SHIRT_SIZES : BOY_SHIRT_SIZES;
+  }
+  if (item === "skirt") {
+    return GIRL_BOTTOM_SIZES;
   }
   if (gender === "girl") {
     return GIRL_BOTTOM_SIZES;
@@ -93,18 +99,27 @@ function normalizeUniformForm(form) {
 function buildUniformProductName(form) {
   const normalized = normalizeUniformForm(form);
   const genderLabel = normalized.gender === "girl" ? "Girl" : "Boy";
-  const itemLabel =
-    normalized.item === "shirt"
-      ? `Shirt (${normalized.sleeve === "long" ? "Long" : "Short"})`
-      : "Pant";
+  let itemLabel = "Pant";
+  if (normalized.item === "shirt") {
+    itemLabel = `Shirt (${normalized.sleeve === "long" ? "Long" : "Short"})`;
+  } else if (normalized.item === "skirt") {
+    itemLabel = "Skirt";
+  }
 
   return `Uniform - ${itemLabel} - ${genderLabel} - Size ${normalized.size}`;
+}
+
+function normalizeProductName(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function parseUniformProductName(productName) {
   const value = typeof productName === "string" ? productName.trim() : "";
   const match = value.match(
-    /^Uniform\s*-\s*(Shirt\s*\((Short|Long)\)|Skirt|Pant)\s*-\s*(Boy|Girl)\s*-\s*Size\s*([A-Za-z0-9]+)\s*$/i
+    /^Uniform\s*-\s*(Shirt\s*\((Short|Long)\)|Skirt|Pant|Pants)\s*-\s*(Boy|Girl)\s*-\s*Size\s*([A-Za-z0-9]+)\s*$/i
   );
   if (!match) {
     return null;
@@ -123,6 +138,14 @@ function parseUniformProductName(productName) {
       size
     };
   }
+  if (rawItem.startsWith("skirt")) {
+    return {
+      gender,
+      item: "skirt",
+      sleeve: "",
+      size
+    };
+  }
 
   return {
     gender,
@@ -130,6 +153,49 @@ function parseUniformProductName(productName) {
     sleeve: "",
     size
   };
+}
+
+function resolveUniformProductName(form, excelItems) {
+  const normalizedSelection = normalizeUniformForm(form);
+  const candidateProductName = buildUniformProductName(normalizedSelection);
+  const normalizedCandidate = normalizeProductName(candidateProductName);
+
+  const availableNames = (excelItems || [])
+    .map((item) => (typeof item?.product_name === "string" ? item.product_name.trim() : ""))
+    .filter(Boolean);
+  if (!availableNames.length) {
+    return candidateProductName;
+  }
+
+  const namesByNormalized = new Map();
+  availableNames.forEach((name) => {
+    const key = normalizeProductName(name);
+    if (key && !namesByNormalized.has(key)) {
+      namesByNormalized.set(key, name);
+    }
+  });
+
+  const exactMatch = namesByNormalized.get(normalizedCandidate);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const semanticMatch = availableNames.find((name) => {
+    const parsed = parseUniformProductName(name);
+    if (!parsed) {
+      return false;
+    }
+    return (
+      parsed.gender === normalizedSelection.gender &&
+      parsed.item === normalizedSelection.item &&
+      (parsed.item !== "shirt" || parsed.sleeve === normalizedSelection.sleeve) &&
+      String(parsed.size).toUpperCase() === String(normalizedSelection.size).toUpperCase()
+    );
+  });
+  if (semanticMatch) {
+    return semanticMatch;
+  }
+  return candidateProductName;
 }
 
 function createDefaultStockEntryForm() {
@@ -591,18 +657,15 @@ function App() {
           return next;
         }
 
-        const candidateProductName = buildUniformProductName({
-          gender: next.uniform_gender,
-          item: next.uniform_item,
-          sleeve: next.uniform_item === "shirt" ? next.uniform_sleeve : "short",
-          size: next.uniform_size
-        });
-        const availableProductNames = new Set(
-          (excelSnapshot?.items || []).map((item) => item.product_name)
+        next.product_name = resolveUniformProductName(
+          {
+            gender: next.uniform_gender,
+            item: next.uniform_item,
+            sleeve: next.uniform_item === "shirt" ? next.uniform_sleeve : "short",
+            size: next.uniform_size
+          },
+          excelSnapshot?.items || []
         );
-        next.product_name = availableProductNames.has(candidateProductName)
-          ? candidateProductName
-          : "";
         return next;
       });
       return;
@@ -632,6 +695,20 @@ function App() {
     }
     const givenToValue = stockEntryForm.given_to.trim();
     const departmentValue = stockEntryForm.department.trim();
+    const hasCompleteUniformSelection =
+      stockEntryForm.stock_entry_type === "uniform" &&
+      stockEntryForm.uniform_gender &&
+      stockEntryForm.uniform_item &&
+      stockEntryForm.uniform_size &&
+      (stockEntryForm.uniform_item !== "shirt" || stockEntryForm.uniform_sleeve);
+    const uniformCategoryValue = hasCompleteUniformSelection
+      ? buildUniformProductName({
+          gender: stockEntryForm.uniform_gender,
+          item: stockEntryForm.uniform_item,
+          sleeve: stockEntryForm.uniform_item === "shirt" ? stockEntryForm.uniform_sleeve : "short",
+          size: stockEntryForm.uniform_size
+        })
+      : null;
     if (stockEntryForm.movement === "out" && (!givenToValue || !departmentValue)) {
       setError("For Out entries, both Given To and Department are required.");
       return;
@@ -643,6 +720,7 @@ function App() {
         product_name: stockEntryForm.product_name,
         movement: stockEntryForm.movement,
         quantity: quantityValue,
+        uniform_category: uniformCategoryValue,
         entry_date: stockEntryForm.entry_date
           ? new Date(stockEntryForm.entry_date).toISOString()
           : null,
@@ -903,7 +981,12 @@ function App() {
     const selected = excelItems.find((item) => item.product_name === stockEntryForm.product_name);
     return selected ? selected.quantity : null;
   }, [excelItems, stockEntryForm.product_name]);
-  const stockEntryItemOptions = useMemo(() => getUniformItemOptions("boy"), []);
+  const stockEntryItemOptions = useMemo(() => {
+    if (!stockEntryForm.uniform_gender) {
+      return [];
+    }
+    return getUniformItemOptions(stockEntryForm.uniform_gender);
+  }, [stockEntryForm.uniform_gender]);
   const stockEntrySizeOptions = useMemo(() => {
     if (!stockEntryForm.uniform_gender || !stockEntryForm.uniform_item) {
       return [];
@@ -1335,12 +1418,16 @@ function App() {
                             value={stockEntryForm.uniform_item}
                             onChange={handleStockEntryChange}
                             required
-                            disabled={stockEntryBusy}
+                            disabled={stockEntryBusy || !stockEntryForm.uniform_gender}
                           >
                             <option value="">Select uniform item</option>
                             {stockEntryItemOptions.map((itemOption) => (
                               <option key={itemOption} value={itemOption}>
-                                {itemOption === "shirt" ? "Shirt" : "Pant"}
+                                {itemOption === "shirt"
+                                  ? "Shirt"
+                                  : itemOption === "skirt"
+                                  ? "Skirt"
+                                  : "Pant"}
                               </option>
                             ))}
                           </select>
