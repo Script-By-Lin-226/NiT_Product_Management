@@ -87,6 +87,7 @@ async def login(login_user:UserLogin , session:AsyncSession, request: Request | 
     )
     response_object.headers["Authorization"] = f"Bearer {access_token}"
     response_object.headers["X-Refresh-Token"] = f"{refresh_token}"
+    response_object.headers["Access-Control-Allow-Origin"] = "*"
 
     return response_object
 

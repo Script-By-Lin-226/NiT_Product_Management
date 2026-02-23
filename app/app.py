@@ -14,6 +14,13 @@ async def life_cycle(app:FastAPI):
 app = FastAPI(version="0.0.1", title="NITProductManagement", lifespan=life_cycle)
 
 app.add_middleware(AuthMiddleware)
+LAN_AND_TUNNEL_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    r"|^https?://(10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(:\d+)?$"
+    r"|^https://([a-zA-Z0-9-]+\.)*vercel\.app$"
+    r"|^https://([a-zA-Z0-9-]+\.)*ngrok-free\.(app|dev)$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -22,7 +29,7 @@ app.add_middleware(
         "http://localhost:3000",
         "https://ni-t-product-management.vercel.app",
     ],
-    allow_origin_regex=r"^https://([a-zA-Z0-9-]+\.)*vercel\.app$|^https://([a-zA-Z0-9-]+\.)*ngrok-free\.(app|dev)$",
+    allow_origin_regex=LAN_AND_TUNNEL_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
