@@ -287,7 +287,6 @@ button.secondary {
 
 .chart-panel .chart-wrap {
   width: 100%;
-  height: 260px;
 }
 
 .table-wrap {
@@ -324,6 +323,21 @@ td {
   padding: 0.64rem;
   border-bottom: 1px solid #2f2f2f;
   font-size: 0.82rem;
+}
+
+.data-table-wrap th:first-child,
+.data-table-wrap td:first-child {
+  width: 76%;
+}
+
+.data-table-wrap td:first-child {
+  overflow-wrap: anywhere;
+}
+
+.data-table-wrap th:last-child,
+.data-table-wrap td:last-child {
+  width: 24%;
+  white-space: nowrap;
 }
 
 th {
@@ -533,10 +547,6 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .chart-panel .chart-wrap {
-    height: 205px;
-  }
-
   .table-wrap {
     max-height: 260px;
   }
@@ -609,16 +619,17 @@ th {
     width: 100%;
   }
 
-  .chart-panel .chart-wrap {
-    height: 185px;
-  }
-
   .table-wrap {
     border-radius: 8px;
   }
 
   .table-wrap table {
-    min-width: 520px;
+    min-width: 460px;
+  }
+
+  .data-table-wrap table {
+    min-width: 100%;
+    table-layout: fixed;
   }
 
   .log-list li {

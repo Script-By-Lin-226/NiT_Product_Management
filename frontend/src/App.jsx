@@ -13,6 +13,29 @@ import {
 import { api } from "./api";
 
 const USER_STORAGE_PREFIX = "nitpm:user-data:v1";
+const MOBILE_VISUALIZATION_BREAKPOINT = 780;
+const MOBILE_TOP_PRODUCTS_LIMIT = 6;
+const MOBILE_DAILY_CHANGE_LIMIT = 10;
+
+function truncateAxisLabel(value, maxLength) {
+  const textValue =
+    typeof value === "string" ? value.trim() : value === null || value === undefined ? "" : String(value);
+  if (textValue.length <= maxLength) {
+    return textValue;
+  }
+  return `${textValue.slice(0, maxLength - 3)}...`;
+}
+
+function formatDateAxisLabel(value) {
+  if (!value) {
+    return "";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return truncateAxisLabel(value, 10);
+  }
+  return parsed.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 function getUserStorageKey(user) {
   const userIdentifier = user?.id ?? user?.email;
@@ -255,6 +278,9 @@ function App() {
     date_from: "",
     date_to: ""
   });
+  const [isMobileVisualization, setIsMobileVisualization] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= MOBILE_VISUALIZATION_BREAKPOINT
+  );
   const restoredStorageKeyRef = useRef(null);
 
   const isAdmin = Boolean(currentUser?.is_admin);
@@ -365,6 +391,20 @@ function App() {
   useEffect(() => {
     refreshDashboard(true);
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      setIsMobileVisualization(window.innerWidth <= MOBILE_VISUALIZATION_BREAKPOINT);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (activePage === "admin" && isAuthenticated && isAdmin) {
@@ -869,6 +909,20 @@ function App() {
   const topProducts = dashboard?.top_products || [];
   const dailyNetChanges = dashboard?.daily_net_changes || [];
   const recentLogs = dashboard?.recent_logs || [];
+  const topInventoryChartData = useMemo(
+    () =>
+      isMobileVisualization ? topProducts.slice(0, MOBILE_TOP_PRODUCTS_LIMIT) : topProducts,
+    [isMobileVisualization, topProducts]
+  );
+  const dailyNetChangeChartData = useMemo(
+    () =>
+      isMobileVisualization
+        ? dailyNetChanges.slice(-MOBILE_DAILY_CHANGE_LIMIT)
+        : dailyNetChanges,
+    [dailyNetChanges, isMobileVisualization]
+  );
+  const topInventoryChartHeight = isMobileVisualization ? 225 : 260;
+  const dailyNetChangeChartHeight = isMobileVisualization ? 190 : 220;
   const excelItems = excelSnapshot?.items || [];
   const excelSummary = excelSnapshot?.summary || {
     product_count: 0,
@@ -1174,13 +1228,54 @@ function App() {
               <article className="panel chart-panel">
                 <div className="section-head">
                   <h2>Top Inventory</h2>
+                  <span className="meta">
+                    {isMobileVisualization && topProducts.length > topInventoryChartData.length
+                      ? `Showing ${topInventoryChartData.length} of ${topProducts.length} items`
+                      : `${topProducts.length} items`}
+                  </span>
                 </div>
                 <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={topProducts}>
+                  <ResponsiveContainer width="100%" height={topInventoryChartHeight}>
+                    <BarChart
+                      data={topInventoryChartData}
+                      layout={isMobileVisualization ? "vertical" : "horizontal"}
+                      margin={
+                        isMobileVisualization
+                          ? { top: 6, right: 8, bottom: 6, left: 0 }
+                          : { top: 6, right: 12, bottom: 6, left: 0 }
+                      }
+                    >
                       <CartesianGrid strokeDasharray="2 6" stroke="#5e5e5e" opacity={0.35} />
-                      <XAxis dataKey="product_name" stroke="#d4d4d4" tick={{ fontSize: 11 }} />
-                      <YAxis stroke="#d4d4d4" tick={{ fontSize: 11 }} />
+                      {isMobileVisualization ? (
+                        <>
+                          <XAxis
+                            type="number"
+                            allowDecimals={false}
+                            stroke="#d4d4d4"
+                            tick={{ fontSize: 10 }}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="product_name"
+                            width={112}
+                            stroke="#d4d4d4"
+                            tick={{ fontSize: 10 }}
+                            tickFormatter={(value) => truncateAxisLabel(value, 16)}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <XAxis
+                            dataKey="product_name"
+                            stroke="#d4d4d4"
+                            tick={{ fontSize: 11 }}
+                            minTickGap={24}
+                            interval="preserveStartEnd"
+                            tickFormatter={(value) => truncateAxisLabel(value, 20)}
+                          />
+                          <YAxis stroke="#d4d4d4" tick={{ fontSize: 11 }} allowDecimals={false} />
+                        </>
+                      )}
                       <Tooltip
                         cursor={{ fill: "rgba(255,255,255,0.08)" }}
                         contentStyle={{ background: "#171717", border: "1px solid #535353" }}
@@ -1194,16 +1289,42 @@ function App() {
               <article className="panel chart-panel">
                 <div className="section-head">
                   <h2>Daily Net Change</h2>
+                  <span className="meta">
+                    {isMobileVisualization && dailyNetChanges.length > dailyNetChangeChartData.length
+                      ? `Latest ${dailyNetChangeChartData.length} days`
+                      : `${dailyNetChanges.length} days`}
+                  </span>
                 </div>
                 <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={dailyNetChanges}>
+                  <ResponsiveContainer width="100%" height={dailyNetChangeChartHeight}>
+                    <AreaChart
+                      data={dailyNetChangeChartData}
+                      margin={
+                        isMobileVisualization
+                          ? { top: 6, right: 8, bottom: 6, left: 0 }
+                          : { top: 6, right: 12, bottom: 6, left: 0 }
+                      }
+                    >
                       <CartesianGrid strokeDasharray="2 6" stroke="#5e5e5e" opacity={0.35} />
-                      <XAxis dataKey="date" stroke="#d4d4d4" tick={{ fontSize: 11 }} />
-                      <YAxis stroke="#d4d4d4" tick={{ fontSize: 11 }} />
+                      <XAxis
+                        dataKey="date"
+                        stroke="#d4d4d4"
+                        tick={{ fontSize: isMobileVisualization ? 10 : 11 }}
+                        minTickGap={isMobileVisualization ? 26 : 16}
+                        interval="preserveStartEnd"
+                        tickFormatter={(value) =>
+                          isMobileVisualization ? formatDateAxisLabel(value) : value
+                        }
+                      />
+                      <YAxis
+                        stroke="#d4d4d4"
+                        tick={{ fontSize: isMobileVisualization ? 10 : 11 }}
+                        width={isMobileVisualization ? 28 : 36}
+                      />
                       <Tooltip
                         cursor={{ fill: "rgba(255,255,255,0.08)" }}
                         contentStyle={{ background: "#171717", border: "1px solid #535353" }}
+                        labelFormatter={formatDateAxisLabel}
                       />
                       <Area
                         type="monotone"
@@ -1221,7 +1342,7 @@ function App() {
                   <h2>Inventory Table</h2>
                   <span className="meta">{inventory.length} items</span>
                 </div>
-                <div className="table-wrap">
+                <div className="table-wrap data-table-wrap">
                   <table>
                     <thead>
                       <tr>
@@ -1571,7 +1692,7 @@ function App() {
                   <h2>Excel Stock Balance</h2>
                   <span className="meta">{excelItems.length} items</span>
                 </div>
-                <div className="table-wrap">
+                <div className="table-wrap data-table-wrap">
                   <table>
                     <thead>
                       <tr>
